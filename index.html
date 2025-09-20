@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>This is War - Wave Survival</title>
+<style>
+body { margin:0; background:#111; overflow:hidden; font-family:sans-serif; touch-action:none; user-select:none; }
+canvas { display:block; background:#1e1e1e; }
+#ui { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+
+/* Buttons */
+.btn { position:absolute; width:80px; height:80px; border-radius:12px; background:#444; color:#fff; font-weight:bold;
+  display:flex; align-items:center; justify-content:center; pointer-events:auto; user-select:none; flex-direction:column; font-size:22px; box-shadow:0 4px 6px rgba(0,0,0,0.4);}
+#mineBtn { right:30px; bottom:150px; background:#f55; }
+#craftWall { right:30px; bottom:50px; background:#964B00; }
+#craftReinforced { right:130px; bottom:50px; background:#D2B48C; }
+#craftConcrete { right:230px; bottom:130px; background:#888; }
+#craftAxe { right:230px; bottom:50px; background:#333; }
+#instrBtn { right:130px; bottom:130px; background:#666; font-size:18px; }
+
+/* Bottom-right info above pickaxe */
+.bottomInfo { position:absolute; right:30px; font-size:14px; line-height:18px; text-align:right; color:white; pointer-events:none; }
+#waveInfoBR { bottom:280px; }
+#baseHpInfo { bottom:260px; }
+#woodInfo { bottom:240px; }
+#stoneInfoBR { bottom:220px; }
+#weaponInfo { bottom:200px; }
+
+/* Top-left info */
+.topLeftInfo { position:absolute; left:10px; top:10px; font-size:16px; line-height:22px; text-align:left; color:white; }
+
+/* Top-middle wave */
+.topMiddleWave { position:absolute; top:20px; left:50%; transform:translateX(-50%); font-size:32px; color:white; text-shadow:1px 1px 4px black; pointer-events:none; }
+
+/* Info above pickaxe */
+.infoText { position:absolute; right:30px; bottom:130px; font-size:12px; color:white; opacity:0.5; text-align:center; width:80px; line-height:14px; pointer-events:none; }
+
+/* Instructions popup */
+#instrPopup { position:absolute; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:none; align-items:center; justify-content:center; }
+#instrContent { background:#222; padding:20px; border-radius:12px; width:300px; text-align:left; color:white; pointer-events:auto; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+  <div id="mineBtn" class="btn">⛏</div>
+  <div id="craftWall" class="btn">◼️<span style="font-size:12px;">12 wood</span></div>
+  <div id="craftReinforced" class="btn">🟫<span style="font-size:12px;">30 wood</span></div>
+  <div id="craftConcrete" class="btn">⬛<span style="font-size:12px;">15 stone</span></div>
+  <div id="craftAxe" class="btn">🪓<span style="font-size:12px;">15 wood</span></div>
+  <div id="instrBtn" class="btn">i</div>
+
+  <!-- Bottom-right info -->
+  <div id="waveInfoBR" class="bottomInfo"></div>
+  <div id="baseHpInfo" class="bottomInfo"></div>
+  <div id="woodInfo" class="bottomInfo"></div>
+  <div id="stoneInfoBR" class="bottomInfo"></div>
+  <div id="weaponInfo" class="bottomInfo"></div>
+
+  <!-- Top-left info -->
+  <div id="topLeftInfo" class="topLeftInfo"></div>
+
+  <!-- Top-middle wave -->
+  <div id="waveDisplay" class="topMiddleWave"></div>
+
+  <!-- Info above pickaxe -->
+  <div id="enemyInfo" class="infoText"></div>
+</div>
+
+<div id="instrPopup">
+  <div id="instrContent">
+    <h3>How to Play</h3>
+    <p>- Move with joystick or mouse</p>
+    <p>- Mine trees 🌳 with pickaxe/fist to get wood</p>
+    <p>- Mine rocks 🪨 with axe to get stone</p>
+    <p>- Build walls to protect the base</p>
+    <p>- Survive waves of enemies</p>
+    <p>- Tap outside this box to close</p>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+function resizeCanvas(){ canvas.width=innerWidth; canvas.height=innerHeight; }
+resizeCanvas();
+window.addEventListener("resize",resizeCanvas);
+
+let player={x:0,y:0,hasAxe:false};
+let wood=0,stone=0,wave=0,wavesDone=false;
+let trees=[],rocks=[],enemies=[],walls=[];
+let base={x:0,y:0,hp:250,maxHp:250};
+let gameOver=false,gameStarted=true;
+let highScore=Number(localStorage.getItem("warHighScore")||0);
+
+const waveDisplay=document.getElementById("waveDisplay");
+const enemyInfo=document.getElementById("enemyInfo");
+const baseHpInfo=document.getElementById("baseHpInfo");
+const woodInfo=document.getElementById("woodInfo");
+const stoneInfoBR=document.getElementById("stoneInfoBR");
+const waveInfoBR=document.getElementById("waveInfoBR");
+const weaponInfo=document.getElementById("weaponInfo");
+const topLeftInfo=document.getElementById("topLeftInfo");
+
+const instrBtn=document.getElementById("instrBtn");
+const instrPopup=document.getElementById("instrPopup");
+instrBtn.addEventListener("click",()=>instrPopup.style.display="flex");
+instrPopup.addEventListener("click",(e)=>{if(e.target===instrPopup) instrPopup.style.display="none";});
+
+let joyX=0,joyY=0,activeTouchId=null,touchStart=null;
+let mouseDown=false;
+document.body.addEventListener("touchstart",(e)=>{for(const t of e.changedTouches){if(t.target.closest(".btn")) continue;if(activeTouchId===null){activeTouchId=t.identifier; touchStart={x:t.clientX,y:t.clientY}; updateJoy(t);}}},{passive:true});
+document.body.addEventListener("touchmove",(e)=>{for(const t of e.changedTouches) if(t.identifier===activeTouchId) updateJoy(t);},{passive:true});
+document.body.addEventListener("touchend",(e)=>{for(const t of e.changedTouches) if(t.identifier===activeTouchId){activeTouchId=null;touchStart=null;joyX=joyY=0;}});
+
+function updateJoy(t){
+  if(!touchStart) return;
+  const dx=t.clientX-touchStart.x,dy=t.clientY-touchStart.y,d=Math.min(Math.hypot(dx,dy),50),a=Math.atan2(dy,dx);
+  joyX=Math.cos(a)*d/50; joyY=Math.sin(a)*d/50;
+}
+
+canvas.addEventListener("mousedown",e=>{if(e.target.closest(".btn")) return; mouseDown=true; updateJoy(e);});
+window.addEventListener("mousemove",e=>{if(mouseDown) updateJoy(e);});
+window.addEventListener("mouseup",()=>{mouseDown=false; joyX=joyY=0;});
+
+let mining=false;
+const mineBtn=document.getElementById("mineBtn");
+["touchstart","mousedown"].forEach(ev=>mineBtn.addEventListener(ev,e=>{mining=true;e.stopPropagation();}));
+["touchend","mouseup"].forEach(ev=>mineBtn.addEventListener(ev,e=>{mining=false;e.stopPropagation();}));
+
+function addCraft(id,callback){["touchstart","click"].forEach(ev=>document.getElementById(id).addEventListener(ev,callback));}
+addCraft("craftWall",()=>{if(wood>=12){wood-=12; walls.push({x:Math.round(player.x/50)*50,y:Math.round(player.y/50)*50,hp:15,maxHp:15,type:'normal'});}});
+addCraft("craftReinforced",()=>{if(wood>=30){wood-=30; walls.push({x:Math.round(player.x/50)*50,y:Math.round(player.y/50)*50,hp:45,maxHp:45,type:'reinforced'});}});
+addCraft("craftConcrete",()=>{if(stone>=15){stone-=15; walls.push({x:Math.round(player.x/50)*50,y:Math.round(player.y/50)*50,hp:80,maxHp:80,type:'concrete'});}});
+addCraft("craftAxe",()=>{if(!player.hasAxe&&wood>=15){wood-=15;player.hasAxe=true;}});
+
+function spawnTreesAndRocks(){
+  for(let i=0;i<120;i++){
+    const t={x:Math.random()*2000-1000,y:Math.random()*2000-1000,hp:12,gaveWood:false};
+    trees.push(t);
+    if(i%10===0){
+      let rock;
+      do{ rock={x:Math.random()*2000-1000,y:Math.random()*2000-1000,hp:15,gaveStone:false};
+      }while(trees.some(tr=>Math.hypot(tr.x-rock.x,tr.y-rock.y)<50));
+      rocks.push(rock);
+    }
+  }
+}
+spawnTreesAndRocks();
+
+const waves=[
+  {normal:5,big:0},{normal:10,big:0},{normal:15,big:2},{normal:20,big:3},{normal:25,big:5},
+  {normal:30,big:3},{normal:35,big:4},{normal:40,big:4},{normal:45,big:5},{normal:50,big:10},
+];
+let currentWaveIndex=0,waveActive=false,countdownRunning=false,countdown=0;
+
+function startNextWave(){
+  if(currentWaveIndex>=waves.length){ wavesDone=true; waveDisplay.innerText="All waves complete!"; waveInfoBR.innerText="All waves done"; return; }
+  countdownRunning=true; countdown=10;
+  const interval=setInterval(()=>{
+    if(countdown>0){ waveDisplay.innerText=`Wave ${currentWaveIndex+1} starting in ${countdown}`; waveInfoBR.innerText=`Intermission: ${countdown}s`; countdown--; }
+    else{
+      clearInterval(interval); countdownRunning=false;
+      wave=currentWaveIndex+1;
+      waveDisplay.innerText=`Wave ${wave}`;
+      waveInfoBR.innerText=`Wave ${wave}`;
+      const cfg=waves[currentWaveIndex];
+      for(let i=0;i<cfg.normal;i++) spawnEnemy(false);
+      for(let i=0;i<cfg.big;i++) spawnEnemy(true);
+      waveActive=true;
+      currentWaveIndex++;
+    }
+  },1000);
+}
+
+function spawnEnemy(big=false){
+  const a=Math.random()*Math.PI*2;
+  enemies.push({ x: base.x+Math.cos(a)*700, y: base.y+Math.sin(a)*700, hp: big?120:60, maxHp: big?120:60, big:big });
+}
+
+startNextWave();
+
+let camX=0,camY=0;
+function loop(){
+  requestAnimationFrame(loop);
+  if(!gameStarted||gameOver) return;
+
+  player.x+=joyX*3; player.y+=joyY*3;
+
+  if(mining){
+    trees.forEach(t=>{if(Math.hypot(player.x-t.x,player.y-t.y)<45){ t.hp-=(player.hasAxe?10:4); if(t.hp<=0&&!t.gaveWood){ wood+=3; t.gaveWood=true; } }});
+    rocks.forEach(r=>{if(Math.hypot(player.x-r.x,player.y-r.y)<45&&player.hasAxe){ r.hp-=10; if(r.hp<=0&&!r.gaveStone){ stone+=3; r.gaveStone=true; } }});
+    enemies.forEach(en=>{if(Math.hypot(player.x-en.x,player.y-en.y)<45){ en.hp-=(player.hasAxe?10:4); }});
+  }
+
+  trees=trees.filter(t=>t.hp>0||!t.gaveWood);
+  rocks=rocks.filter(r=>r.hp>0||!r.gaveStone);
+  walls=walls.filter(w=>w.hp>0);
+  enemies=enemies.filter(en=>en.hp>0);
+
+  enemies.forEach(en=>{
+    const nearWall=walls.find(w=>Math.hypot(en.x-w.x,en.y-w.y)<45);
+    if(nearWall){ nearWall.hp-=(en.big?0.2:0.1); return; }
+    const dx=base.x-en.x,dy=base.y-en.y,d=Math.hypot(dx,dy);
+    if(d!==0){ en.x+=dx/d; en.y+=dy/d; }
+    if(d<45){ base.hp-=(en.big?0.2:0.1); if(base.hp<=0) flagLost(); }
+  });
+
+  if(!wavesDone&&!countdownRunning&&(!waveActive||enemies.length===0)){ if(enemies.length===0){ waveActive=false; startNextWave(); } if(wave>highScore){ highScore=wave; localStorage.setItem("warHighScore",highScore); } }
+
+  camX=player.x-canvas.width/2; camY=player.y-canvas.height/2;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save(); ctx.translate(-camX,-camY);
+
+  // Base
+  ctx.fillStyle="#6b4226"; ctx.fillRect(base.x-50,base.y-50,100,100);
+  ctx.fillStyle="blue"; ctx.fillRect(base.x-10,base.y-10,20,20);
+
+  // Walls
+  walls.forEach(w=>{
+    ctx.fillStyle=w.type==='reinforced'?"#D2B48C":w.type==='concrete'?"#888":"#7b3f00";
+    ctx.fillRect(w.x-20,w.y-20,40,40);
+    ctx.strokeStyle="black"; ctx.strokeRect(w.x-20,w.y-20,40,40);
+    ctx.fillStyle="lime"; ctx.fillRect(w.x-20,w.y-30,(w.hp/w.maxHp)*40,5);
+  });
+
+  // Placement indicator
+  const placeX=Math.round(player.x/50)*50, placeY=Math.round(player.y/50)*50;
+  ctx.fillStyle="blue"; ctx.beginPath(); ctx.arc(placeX,placeY,5,0,Math.PI*2); ctx.fill();
+
+  // Trees
+  trees.forEach(t=>{ ctx.font="20px sans-serif"; ctx.fillText("🌳",t.x-10,t.y+10); });
+
+  // Rocks
+  rocks.forEach(r=>{ ctx.font="20px sans-serif"; ctx.fillText("🪨",r.x-10,r.y+10); });
+
+  // Enemies as stickmen
+  enemies.forEach(en=>{
+    ctx.strokeStyle="red"; ctx.lineWidth=3;
+    // Head
+    ctx.beginPath(); ctx.arc(en.x,en.y-20,10,0,Math.PI*2); ctx.stroke();
+    // Body
+    ctx.beginPath(); ctx.moveTo(en.x,en.y-10); ctx.lineTo(en.x,en.y+10); ctx.stroke();
+    // Arms
+    ctx.beginPath(); ctx.moveTo(en.x-10,en.y); ctx.lineTo(en.x+10,en.y); ctx.stroke();
+    // Legs
+    ctx.beginPath(); ctx.moveTo(en.x,en.y+10); ctx.lineTo(en.x-10,en.y+25); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(en.x,en.y+10); ctx.lineTo(en.x+10,en.y+25); ctx.stroke();
+    // Health bar
+    ctx.fillStyle="black"; ctx.fillRect(en.x-20,en.y-35,40,5);
+    ctx.fillStyle="lime"; ctx.fillRect(en.x-20,en.y-35,(en.hp/en.maxHp)*40,5);
+  });
+
+  // Player
+  ctx.strokeStyle="white"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(player.x,player.y-20,10,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(player.x,player.y-10); ctx.lineTo(player.x,player.y+20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(player.x-12,player.y); ctx.lineTo(player.x+12,player.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(player.x,player.y+20); ctx.lineTo(player.x-10,player.y+35); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(player.x,player.y+20); ctx.lineTo(player.x+10,player.y+35); ctx.stroke();
+
+  // Arrow to base
+  const ax=base.x-player.x,ay=base.y-player.y,ang=Math.atan2(ay,ax);
+  ctx.save(); ctx.translate(player.x,player.y-40); ctx.rotate(ang);
+  ctx.fillStyle="red"; ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(-8,6); ctx.lineTo(-8,-6); ctx.closePath(); ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+
+  // UI overlay
+  waveInfoBR.innerText=`Wave: ${wave}`;
+  enemyInfo.innerText=`Enemies: ${enemies.length}`;
+  baseHpInfo.innerText=`Base HP: ${Math.floor(base.hp)}`;
+  woodInfo.innerText=`Wood: ${wood}`;
+  stoneInfoBR.innerText=`Stone: ${stone}`;
+  weaponInfo.innerText=`Weapon: ${player.hasAxe?"🪓 Axe":"👊 Fist"}`;
+  topLeftInfo.innerText=`Wood: ${wood}\nStone:
+
+${stone}\nWeapon: ${player.hasAxe?"🪓 Axe":"👊 Fist"}`;
+}
+loop();
+function flagLost(){ gameOver=true; alert("Base destroyed – Game Over! Wave: "+wave); }
+</script>
+</body> </html> ```
+
+
