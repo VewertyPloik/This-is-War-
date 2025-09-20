@@ -105,8 +105,12 @@ const topLeftInfo=document.getElementById("topLeftInfo");
 
 const instrBtn=document.getElementById("instrBtn");
 const instrPopup=document.getElementById("instrPopup");
-instrBtn.addEventListener("click",()=>instrPopup.style.display="flex");
-instrPopup.addEventListener("click",(e)=>{if(e.target===instrPopup) instrPopup.style.display="none";});
+const instrContent=document.getElementById("instrContent");
+
+// Fixed instructions popup
+instrBtn.addEventListener("click", (e) => { e.stopPropagation(); instrPopup.style.display="flex"; });
+instrPopup.addEventListener("click", (e) => { if(e.target === instrPopup) instrPopup.style.display="none"; });
+instrContent.addEventListener("click", (e) => e.stopPropagation());
 
 let joyX=0,joyY=0,activeTouchId=null,touchStart=null;
 let mouseDown=false;
@@ -239,16 +243,11 @@ function loop(){
   // Enemies as stickmen
   enemies.forEach(en=>{
     ctx.strokeStyle="red"; ctx.lineWidth=3;
-    // Head
     ctx.beginPath(); ctx.arc(en.x,en.y-20,10,0,Math.PI*2); ctx.stroke();
-    // Body
     ctx.beginPath(); ctx.moveTo(en.x,en.y-10); ctx.lineTo(en.x,en.y+10); ctx.stroke();
-    // Arms
     ctx.beginPath(); ctx.moveTo(en.x-10,en.y); ctx.lineTo(en.x+10,en.y); ctx.stroke();
-    // Legs
     ctx.beginPath(); ctx.moveTo(en.x,en.y+10); ctx.lineTo(en.x-10,en.y+25); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(en.x,en.y+10); ctx.lineTo(en.x+10,en.y+25); ctx.stroke();
-    // Health bar
     ctx.fillStyle="black"; ctx.fillRect(en.x-20,en.y-35,40,5);
     ctx.fillStyle="lime"; ctx.fillRect(en.x-20,en.y-35,(en.hp/en.maxHp)*40,5);
   });
@@ -276,13 +275,10 @@ function loop(){
   woodInfo.innerText=`Wood: ${wood}`;
   stoneInfoBR.innerText=`Stone: ${stone}`;
   weaponInfo.innerText=`Weapon: ${player.hasAxe?"🪓 Axe":"👊 Fist"}`;
-  topLeftInfo.innerText=`Wood: ${wood}\nStone:
-
-${stone}\nWeapon: ${player.hasAxe?"🪓 Axe":"👊 Fist"}`;
+  topLeftInfo.innerText=`Wood: ${wood}\nStone:\n${stone}\nWeapon: ${player.hasAxe?"🪓 Axe":"👊 Fist"}`;
 }
 loop();
 function flagLost(){ gameOver=true; alert("Base destroyed – Game Over! Wave: "+wave); }
 </script>
-</body> </html> ```
-
-
+</body> 
+</html>
